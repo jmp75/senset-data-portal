@@ -110,6 +110,27 @@ class API(object):
         )
 
     @property
+    def create_location(self):
+        """ :reference:
+        https://data.sense-t.org.au/api/sensor/v2/api-docs/#!/default/put_location_id
+            :allowed_param: 'id', 'description', 'organisationid', 'geoJson'
+        """
+        return bind_api(
+            api=self,
+            path='/locations/{id}',
+            method='PUT',
+            payload_type='json',
+            action='create',
+            allowed_param=[
+                'id',
+                'organisationid',
+                'description',
+                'geoJson',
+            ],
+            require_auth=True,
+        )
+
+    @property
     def create_platform(self):
         """ :reference: https://data.sense-t.org.au/api/sensor/v2/api-docs/#!/default/put_platforms_id
             :allowed_param: 'id', 'name', 'organisationid', 'groupids', 'streamids', 'deployments'
@@ -188,7 +209,7 @@ class API(object):
     def create_stream(self):
         """ :reference: https://data.sense-t.org.au/api/sensor/v2/api-docs/#!/default/put_streams_id
             :allowed_param: 'id', 'resulttype', 'organisationid', 'groupids', 'procedureid', 'samplePeriod',
-            'reportingPeriod', 'streamMetadata',
+            'reportingPeriod', 'streamMetadata', 'locationid',
         """
         return bind_api(
             api=self,
@@ -205,6 +226,7 @@ class API(object):
                 'samplePeriod',
                 'reportingPeriod',
                 'streamMetadata',
+                'locationid',
             ],
             require_auth=True,
         )
@@ -240,7 +262,7 @@ class API(object):
 
     @property
     def get_observations(self):
-        """ :reference: https://data.sense-t.org.au/api/sensor/v2/api-docs/#!/default/get_observations
+        """ :reference: https://data.sense-t.org.au/api/sensor/v2/api-docs/#!/default/get_observations 
             :allowed_param: 'streamid', 'start', 'end', 'time', 'si', 'ei',
             'bounds', 'media', 'limit', 'sort'
         """
@@ -253,14 +275,14 @@ class API(object):
             ],
             query_only_param=[
                 'streamid',
-                'start',
-                'end',
-                'time',
-                'si',
+                'start', 
+                'end', 
+                'time', 
+                'si', 
                 'ei',
-                'bounds',
-                'media',
-                'limit',
+                'bounds', 
+                'media', 
+                'limit', 
                 'sort',
             ],
             require_auth=True,
