@@ -124,8 +124,8 @@ class Model(object):
         state = self.__getstate__(action)
         return state
 
-    def to_json(self, action=None):
-        return json.dumps(self.to_state(action), sort_keys=True, cls=SenseTEncoder)  # be explict with key order so unittest work.
+    def to_json(self, action=None, indent=None):
+        return json.dumps(self.to_state(action), sort_keys=True, cls=SenseTEncoder, indent=indent)  # be explict with key order so unittest work.
 
     @classmethod
     def parse(cls, api, json):
@@ -217,7 +217,7 @@ class Platform(Model):
         if isinstance(json_list, list):
             item_list = json_list
         else:
-            item_list = json_list['platforms']
+            item_list = json_list['_embedded']['platforms']
 
         results = ResultSet()
         for obj in item_list:
@@ -314,10 +314,10 @@ class StreamMetaData(Model):
             pickled["interpolationType"] = self.interpolation_type.value
 
         if self.observed_property:
-            pickled["observedProperty"] = self.observed_property.value
+            pickled["observedProperty"] = self.observed_property
 
         if self.unit_of_measure:
-            pickled["unitOfMeasure"] = self.unit_of_measure.value
+            pickled["unitOfMeasure"] = self.unit_of_measure
 
         # clean up non scalar StreamMetaData keys
         if self._type != StreamMetaDataType.scalar:
@@ -380,14 +380,17 @@ class StreamMetaData(Model):
                     if ek == "interpolationType":
                         ev = ev[0].get('_links', {}).get('self', {}).get('href', )
                         setattr(stream_meta_data, "interpolation_type", InterpolationType(ev))
-                    if ek == "observedProperty":
+                    elif ek == "observedProperty":
                         ev = ev[0].get('_links', {}).get('self', {}).get('href', )
                         # Remove local vocab checks for now
                         setattr(stream_meta_data, "observed_property", ev)
-                    if ek == "unitOfMeasure":
+                    elif ek == "unitOfMeasure":
                         ev = ev[0].get('_links', {}).get('self', {}).get('href', )
                         # Remove local vocab checks for now
                         setattr(stream_meta_data, "unit_of_measure", ev)
+                    else:
+                        setattr(stream_meta_data, ek, ev)
+                        print("parse: %s, %s" % (ek,ev))
             else:
                 setattr(stream_meta_data, k, v)
         return stream_meta_data
@@ -432,6 +435,7 @@ class Stream(Model):
         self._organisations = list()
         self._groups = list()
         self._metadata = None
+        self._location = None
 
     def __getstate__(self, action=None):
         pickled = super(Stream, self).__getstate__(action)
@@ -441,6 +445,13 @@ class Stream(Model):
 
         if self.groups:
             pickled["groupids"] = [g.id for g in self.groups]
+
+        try:
+            if self.location:
+                pickled["locationid"] = self.location.id
+        except AttributeError:
+            # excetion will be thrown if location is not specified and current object does not have a location
+            pass
 
         if self.metadata:
             pickled["streamMetadata"] = self.metadata.__getstate__(action)
@@ -454,12 +465,14 @@ class Stream(Model):
         for k, v in json.items():
             if k == "resulttype":
                 setattr(stream, "result_type", StreamResultType(v))
-            if k == "_embedded":
+            elif k == "_embedded":
                 for ek, ev in v.items():
                     if ek == "organisation":
                         setattr(stream, "organisations", Organisation.parse_list(api, ev))
                     elif ek == "groups":
                         setattr(stream, "groups", Group.parse_list(api, ev))
+                    elif ek == "location":
+                        setattr(stream, "location", Location.parse(api, ev[0]))
                     elif ek == "metadata":
                         # metadata is also a list ?????
                         setattr(stream, "metadata", StreamMetaData.parse(api, ev[0]))
@@ -472,7 +485,7 @@ class Stream(Model):
         if isinstance(json_list, list):
             item_list = json_list
         else:
-            item_list = json_list['streams']
+            item_list = json_list['_embedded']['streams']
 
         results = ResultSet()
         for obj in item_list:
@@ -504,6 +517,14 @@ class Stream(Model):
         self._groups = value
 
     @property
+    def location(self):
+        return self._location
+
+    @location.setter
+    def location(self, value):
+        self._location = value
+
+    @property
     def metadata(self):
         return self._metadata
 
@@ -522,9 +543,17 @@ class Group(Model):
         return group
 
 
+# TODO - not all attributes are implemented
 class Location(Model):
-    pass
+    @classmethod
+    def parse(cls, api, json):
+        result = cls(api)
 
+        setattr(result, '_json', json)
+        for k, v in json.items():
+            setattr(result, k, v)
+
+        return result
 
 class Procedure(Model):
     pass
@@ -552,6 +581,7 @@ class Observation(Model):
             if k == "results":
                 setattr(stream, "results", UnivariateResult.parse_list(api, v))
             if k == "stream":
+                #TODO - is this a mistake? Should steam be stream?
                 setattr(stream, "steam", Stream.parse(api, v))
             else:
                 setattr(stream, k, v)
@@ -568,6 +598,19 @@ class Observation(Model):
         for obj in item_list:
             results.append(cls.parse(api, obj))
         return results
+    
+    @classmethod
+    def from_dataframe(cls, dataframe):
+		result = {}
+		
+		for timestamp, series in dataframe.iterrows():
+			timestamp = timestamp.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+			
+			for series_id, value in series.iteritems():
+				observation = UnivariateResult(t=timestamp, v=value)
+				result.setdefault(series_id, Observation()).results.append(observation)
+		
+		return result
 
     @property
     def results(self):
@@ -590,10 +633,10 @@ class Aggregation(Model):
 
 
 class UnivariateResult(JSONModel):
-    def __init__(self, api=None):
+    def __init__(self, api=None, t=None, v=None):
         super(UnivariateResult, self).__init__(api=api)
-        self.t = None
-        self.v = None
+        self.t = t
+        self.v = v
 
     def __getstate__(self, action=None):
         pickled = super(UnivariateResult, self).__getstate__(action)

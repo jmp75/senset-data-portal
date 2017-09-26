@@ -28,6 +28,7 @@ from sensetdp.models import ModelFactory
 from sensetdp.utils import import_simplejson
 from sensetdp.error import SenseTError
 
+from cStringIO import StringIO
 
 class Parser(object):
 
@@ -124,3 +125,45 @@ class ModelParser(JSONParser):
             return result, cursors
         else:
             return result
+
+class PandasObservationParser(Parser):
+    def __init__(self):
+        import pandas # NOTE: import here means we don't require pandas to be installed unless we actually instantiate this class.
+        self.pandas = pandas
+        
+        self.json_lib = import_simplejson()
+    
+    def parse(self, method, payload):
+		# Validate media type.
+        media_type = method.query_params.get('media', None)
+        if media_type != 'csv':
+            raise SenseTError('PandasObservationParser requires CSV media type (media type "{}" is not supported).'.format(media_type))
+        
+        # Skip header information.
+        stream_ids = method.query_params['streamid'].split(',') # NOTE: this WILL break if stream IDs contain commas (need to properly parse as CSV).
+        column_headers = frozenset(['timestamp'] + stream_ids)
+        lines = payload.splitlines()
+        for i, row in enumerate(lines):
+            if set(s.strip() for s in row.split(',')) == column_headers:
+                break
+        
+        # Parse CSV payload.
+        df = self.pandas.read_csv(StringIO('\n'.join(lines[i:])), parse_dates=True, index_col='timestamp')
+        
+        # SensorCloud returns columns in random (alphabetic?) order - reorder to
+        # match the order the stream IDs were originally given in.
+        if len(stream_ids) > 1:
+            df = df[stream_ids]
+        
+        return df
+    
+    def parse_error(self, payload):
+        error_object = self.json_lib.loads(payload)
+        reason = "An unknown error occurred"
+        api_code = None
+        
+        if 'status' in error_object or 'message' in error_object:
+            reason = error_object.get('message', reason)
+            api_code = error_object.get('status', None)
+        
+        return reason, api_code
