@@ -28,7 +28,7 @@ from sensetdp.models import ModelFactory
 from sensetdp.utils import import_simplejson
 from sensetdp.error import SenseTError
 
-from cStringIO import StringIO
+from io import StringIO
 
 class Parser(object):
 
